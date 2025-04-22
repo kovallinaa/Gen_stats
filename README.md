@@ -1,81 +1,42 @@
-import pandas as pd
-import re
+Мета:
+    Проаналізувати дані по населенню та ключовим гендерним метрикам у країнах Європи за 2018–2022 роки. 
+Побудувати очищені датасети для подальшого аналізу та візуалізації в Tableau.
 
-df = pd.read_excel("Gender_StatsEXCEL.xlsx",sheet_name="Data")
+Дані:
+    Файл: Gender_StatsEXCEL.xlsx
+    Джерело: https://genderdata.worldbank.org/en/home
+    Світовий банк. World Bank, Gender Data Portal
+    Країни: Ukraine, Poland, Germany, France, Italy, Spain, Netherlands, Sweden, Norway
+    Метрики:
+        Загальне населення (SP.POP.TOTL)
+        Населення віком 15–64 років (SP.POP.1564.*)
+        Labor Force Participation (SL.TLF.CACT.*.ZS)
+        Employment Population Rate (розраховується)
+        Unemployment Rate (SL.UEM.TOTL.*.ZS)
+        Enrollment to Tertiary Education (SE.TER.ENRR.*)
 
-df_long = df.melt(
-    id_vars=["Country Name", "Country Code", "Indicator Name", "Indicator Code"],
-    var_name="Year",
-    value_name="Value"
-)
+Що зроблено:
+1) Проведено первинну трансформацію через melt, щоб отримати зручний формат (long-form)
+2) Відібрано необхідні країни, роки та показники згідно з дослідницькою метою
+3) Розділено за статтю та віковим інтервалами на основі кодів-індикаторів
+4) Згруповано дані по країнах, роках і гендеру для розрахунків ключових показників
+5) Збережено два структуровані .csv-файли для подальшого аналізу та візуалізації
 
+Файли в документі:
+    Gender_StatsEXCEL.xlsx - вихідні дані
+    cleaning.py - код, обробка й підготовка даних
+    .csv файли - результати обробки для дашборду та подальшого аналізу
+        1 файл - gender_metrics_clean.csv: агреговані дані по країнах, статі та роках
+        2 файл - population_15_64_1_clean.csv: деталізовані вікові групи для населення 15–64 років
 
-YEARS = ['2018', '2019', '2020', '2021', '2022']
-COUNTRIES = ['Ukraine','Poland','Germany','France','Italy','Spain','Netherlands','Sweden','Norway']
-metric_codes = [
-    "SP.POP.1564.FE.IN", "SP.POP.1564.MA.IN",
-    "SL.TLF.CACT.FE.ZS", "SL.TLF.CACT.MA.ZS",
-    "SL.UEM.TOTL.FE.ZS", "SL.UEM.TOTL.MA.ZS",
-    "SE.TER.ENRR.FE", "SE.TER.ENRR.MA"
-]
-df_filtered_all = df_long[
-    df_long["Year"].astype(str).isin(YEARS) &
-    df_long["Country Name"].isin(COUNTRIES)]
+Dashboard у Tableau:
 
-df_filt_1 = df_filtered_all[df_filtered_all["Indicator Code"].astype(str).isin(metric_codes)].copy()
-df_filt_2 = df_filtered_all[df_filtered_all["Indicator Code"].astype(str).isin(["SP.POP.TOTL"])].copy()
-df_filt_3 = df_filtered_all[df_filtered_all["Indicator Code"].str.contains(r"SP\.POP\.\d{4}\.")].copy()
+Посилання на готовий дашборд: https://public.tableau.com/app/profile/alina.kovalenko6867/viz/EuropeanLaborForceAnalysis/Dashboard1?publish=yes
+На дашборді представлені:
+    1) Ключові цифри: Total Population та Population віку 15–64, Labor Force Participation, Employment to Population Rate, Unemployment Rate
+    2) Enrollment до освіти по вікових категоріях і гендеру
+    3) Кількість людей у Labor Force, працевлаштованих та непрацевлаштованих
+    4) Мапа загального населення обраних країн і відсоткове співвідношення Labor Force
+    5) Візуалізація Employment & Unemployment Rate як криві (тренди)
+    Фільтри: по країнах, гендеру та роках (2018–2022)
 
-def extract_gender(code):
-    if ".FE" in code:
-        return "Female"
-    elif ".MA" in code:
-        return "Male"
-    else:
-        return "Total"
-df_filt_1["Gender"] = df_filt_1["Indicator Code"].apply(extract_gender)
-df_filt_3["Gender"] = df_filt_3["Indicator Code"].apply(extract_gender)
-
-def extract_age_group(code):
-    if "SP.POP.1564" in code:
-        return None
-    match = re.search(r'SP\.POP\.(\d{4})\.', code)
-    if match:
-        start = int(match.group(1)[:2])
-        end = int(match.group(1)[2:])
-        if start >= 15 and end <= 64:
-            return f"{start}–{end}"
-    return None
-df_filt_3["Age Group"] = df_filt_3["Indicator Code"].apply(extract_age_group)
-
-
-df_age = df_filt_3[df_filt_3["Age Group"].notnull()]
-df_age_result = df_age[["Country Name", "Year", "Gender", "Age Group", "Value"]]
-df_age_result.to_csv("population_15_64_1_clean.csv", index=False, encoding="utf-8-sig")
-
-def classify_code(code):
-    if 'SP.POP.1564' in code:
-        return 'Population (15-64)'
-    elif 'SL.TLF.CACT' in code:
-        return 'Labor Force'
-    elif 'SL.UEM.TOTL' in code:
-        return 'Unemployment'
-    elif 'SE.TER.ENRR' in code:
-        return 'Education'
-    elif "SP.POP.TOTL" in code:
-        return "Total Population"
-    else:
-        return "Other"
-
-df_filt_1['Indicarors'] = df_filt_1["Indicator Code"].apply(classify_code)
-df_filt_2['Total Population'] = df_filt_2['Indicator Code'].apply(classify_code)
-# pivot основних метрик
-df_pivot = df_filt_1.pivot_table(
-    index=["Country Name", "Year", "Gender"],
-    columns="Indicarors",
-    values="Value"
-).reset_index()
-left_table = df_pivot[['Country Name','Year','Gender','Education','Labor Force', 'Population (15-64)','Unemployment']]
-right_table = df_filt_2[['Country Name','Year','Value']]
-final_df = left_table.merge(right_table, on=["Country Name", "Year"], how="left")
-final_df.to_csv("gender_metrics_clean.csv", index=False, encoding="utf-8-sig")
